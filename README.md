@@ -53,7 +53,7 @@ Behavioural tests using Gherkin starts by defining feature files. These files gr
 
 Using Gherkin language, our Happy Path could be expressed as follows:
 
-```Gherkin
+```gherkin
   Scenario: Single Service
     Given A Salt Shaker
     When I shake it once
@@ -110,23 +110,128 @@ def doses_serve(served):
 
 Note that we have written three functions, each one mapping to a step definition using the same text that describes the step in the feature file. Note that we have added another `pytest.fixture` decorator the the when function, as we will use the returned value of the when function in the final `then` step definition.
 
-_Et voilá_. We have coded the tests for our first scenario.
+_Et voilá_. We have coded the tests for our first scenario!
 
 ### Running our first test
 
 As pytest-bdd is a plugin for pytest module, the way we run our test is as follows:
 
 ```sh
-python -m pytest step_1/test
+python -m pytest step_1/tests
 ```
 
-Even though pytest execution can be launched u
+Even though pytest execution can be launched using the pytest command, we will launch them using `python -m pytest` for adding the salty
+module to the `sys.path` entries. You can read more about pytest python path settings in pytest [official documentation](https://docs.pytest.org/en/latest/pythonpath.html#invoking-pytest-versus-python-m-pytest).
 
-Pytest will [discover test modules](https://docs.pytest.org/en/latest/goodpractices.html#conventions-for-python-test-discovery) within the tests directory and perform the checks as declared in our step definition functions.
+When executing the previous command, pytest will [discover test modules](https://docs.pytest.org/en/latest/goodpractices.html#conventions-for-python-test-discovery) within the tests directory and perform the checks as declared in our step definition functions. The command output is the following:
 
+```shell script
+==================== test session starts =====================
+platform linux -- Python 3.6.9, pytest-5.3.5, py-1.8.1, pluggy-0.13.1
+rootdir: /home/japizarro/Personal/Talks/bdd-salt-shacker-definitive
+plugins: bdd-3.2.1
+collected 1 item                                                                                                                                                                     
 
+step_1/tests/test_serving.py .                          [100%]
+
+===================== 1 passed in 0.02s ======================
+```
+
+Out of salt! Testing the not-so-happy paths
+-------------------------------------------
+
+As mentioned above, testing the happy path only checks part of your code. It is usually required to test edge scenarios where nominal behaviour changes.
+
+For our salt shaker module, an edge scenario could be shaking an empty shaker. The result shall be serving no dose on a food plate. We could express that feature as follows:
+
+```gherkin
+  Scenario: Empty shaker
+    Given An empty salt shaker
+    When I shake it once
+    Then no dose falls on my plate
+    And It's empty!
+```
+
+Based on the given scenario definition, we could write our tests functions as follows...
+
+```python
+@given("An empty salt shaker")
+def empty_salt_shaker():
+    yield Shaker(doses=0)
+
+@then("no dose falls on my plate")
+def no_dose(shake):
+    assert shake == 0
+
+@then("It's empty!")
+def its_empty(empty_salt_shaker):
+    assert empty_salt_shaker.remaining == 0
+```
+
+As you can see, we have not implemented the "I Shake it once" step defined, as it was previously defined for the first scenario. Furthermore, we will go over a set of improvements we can apply to our step definitions in order get a simpler version of our tests.
+
+### Reuse step definitions
+
+Taking into account the defined test scenarios (Single Service and Empty Shaker), there are some steps that are strictly related:
+
+* An empty salt shaker is just a salt shaker with 0 doses of salt. For our scenarios, we could express them as follows:
+
+```gherkin
+  Scenario: Single Service
+    Given A Salt Shaker with 100 doses
+    When I shake it once
+    Then A salt dose falls on my plate
+
+  Scenario: Empty shaker
+    Given A Salt shaker with 0 doses
+    When I shake it once
+    Then no dose falls on my plate
+    And It's empty!
+```
+
+Now, instead of two different `given` step definitions, we have only one with a _step argument_ as follows:
+
+```python
+@given("A Salt Shaker with <doses> doses")
+def salt_shaker(doses):
+    yield Shaker(doses)
+```
+
+In a similar manner, the `then` step where the doses served can be check can be merged into a step with arguments. This could be the gherkin code for both scenarios:
+
+```gherkin
+  Scenario: Single Service
+    Given A Salt Shaker with 100 doses
+    When I shake it once
+    Then 1 salt dose falls on my plate
+
+  Scenario: Empty shaker
+    Given A Salt shaker with 0 doses
+    When I shake it once
+    Then 0 salt dose falls on my plate
+    And It's empty!
+```
+
+And so the step definitions can be reimplemented as follows:
+
+```python
+@then(parsers.cfparse("{expected_served:d} salt dose falls on my plate"))
+def served_doses(served, expected_served):
+    assert served == expected_served
+```
+
+Pytest-BDD provides a parser object for processing step arguments and injecting them into the functions that require them. By default these arguments are processed as String objects, but some formatting can be specified based on the [parse][pypi-parse] module
+
+As an assigment to test your knowledge of this technique, I suggest you to try adding a step to the _Single Service_ Scenario that checks the salt shaker has 99 remaining doses (hint: And The shaker has 99 units), and merge it with the "It's empty!" step defined in the _Empty shaker_ scenario.
+
+Shake it baby! Scenario outlines
+--------------------------------
+
+TODO
 
 [behave-lib]: https://behave.readthedocs.io/en/latest/
+[pypi-parse]: https://pypi.org/project/parse/
+[pytest-lib]: https://docs.pytest.org/en/latest/
 [pytest-bdd-lib]: https://pytest-bdd.readthedocs.io/en/stable/
 [lettuce-lib]: http://lettuce.it/tutorial/simple.html
 [BDD]: https://en.wikipedia.org/wiki/Behavior-driven_development
