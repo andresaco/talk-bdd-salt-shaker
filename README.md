@@ -114,7 +114,7 @@ _Et voilá_. We have coded the tests for our first scenario!
 
 ### Running our first test
 
-As pytest-bdd is a plugin for pytest module, the way we run our test is as follows:
+As pytest-bdd is a plugin for [pytest][pytest-lib] module, the way we run our test is as follows:
 
 ```sh
 python -m pytest step_1/tests
@@ -192,7 +192,7 @@ Taking into account the defined test scenarios (Single Service and Empty Shaker)
 Now, instead of two different `given` step definitions, we have only one with a _step argument_ as follows:
 
 ```python
-@given("A Salt Shaker with <doses> doses")
+@given(parsers.cfparse("A Salt Shaker with {doses:d} doses"))
 def salt_shaker(doses):
     yield Shaker(doses)
 ```
@@ -220,14 +220,155 @@ def served_doses(served, expected_served):
     assert served == expected_served
 ```
 
-Pytest-BDD provides a parser object for processing step arguments and injecting them into the functions that require them. By default these arguments are processed as String objects, but some formatting can be specified based on the [parse][pypi-parse] module
+Pytest-BDD provides a parser object for processing step arguments and injecting them into the functions that require them. By default these arguments are processed as String objects, but some formatting can be specified based on the [parse][pypi-parse] module. Furthermore, step arguments can consists on regular expressions or custom objects!
 
-As an assigment to test your knowledge of this technique, I suggest you to try adding a step to the _Single Service_ Scenario that checks the salt shaker has 99 remaining doses (hint: And The shaker has 99 units), and merge it with the "It's empty!" step defined in the _Empty shaker_ scenario.
+Check the `step_2` in the code repository to see how the tests and feature file result after these changes. As an assignment to test your knowledge of this technique, I suggest you to try adding a step to the _Single Service_ Scenario that checks the salt shaker has 99 remaining doses (hint: And The shaker has 99 units), and merge it with the "It's empty!" step defined in the _Empty shaker_ scenario.
 
 Shake it baby! Scenario outlines
 --------------------------------
 
-TODO
+Maybe not you, but when I put some salt in a plate, I shake the salt shaker more than once. We will write another scenario to describe this use case:
+
+```gherkin
+  Scenario: Serve multiple times
+    Given A Salt Shaker with 100 doses
+    When I shake the shaker 10 times
+    Then 10 salt dose falls on my plate
+    And The shaker contains 90 doses
+```
+
+Starting with the given scenario, we could write our step definitions for the given scenario with the following code:
+
+```python
+@pytest.fixture
+@when(parsers.parse("I shake {shakes:d} times"))
+def multi_shake(salt_shaker, shakes):
+    doses = 0
+    for i in range(0, shakes):
+        doses += salt_shaker.shake()
+    yield doses
+
+@then(parsers.parse("The shaker contains {expected_remaining:d} doses"))
+def check_remaining(salt_shaker, expected_remaining):
+    assert salt_shaker.remaining == expected_remaining
+```
+
+Plus, all the serving scenarios could be merged into one single step!
+
+```gherkin
+  Scenario: Single Service
+    Given A Salt Shaker with 100 doses
+    When I shake the shaker 1 times
+    Then 1 salt dose falls on my plate
+
+  Scenario: Empty shaker
+    Given A Salt shaker with 0 doses
+    When I shake the shaker 1 times
+    Then 0 salt dose falls on my plate
+    And The shaker contains 00 doses
+
+  Scenario: Serve multiple times
+    Given A Salt Shaker with 100 doses
+    When I shake the shaker 10 times
+    Then 10 salt dose falls on my plate
+    And The shaker contains 90 doses
+```
+
+The new scenario seems good, but not enough. The choice of specifying 10 shakes instead of another amount seems arbitrary. Furthermore, In case we want to add similar scenarios with different shakes, is it a good idea to just copy and paste the scenario? This task becomes tedious and repetitive, and it the long term leads to an unmantainable state. 
+
+### Introducing Scenario Outlines
+
+Gherkin allows to define templates for running the same scenario multiple times with different combinations of values. These templates are usually called _Scenario Outlines_.
+
+On a given scenario, the template parameters are written between brackets `< >`. The parameter values for each tests are written inside and _Examples_ table
+
+```gherkin
+  Scenario: Serve multiple times
+    Given A Salt Shaker with <doses> doses
+    When I shake the shaker <serve> times
+    Then <served> salt doses fall on my plate
+    And The shaker contains <remain> doses
+
+    Examples:
+      | doses | serve | remain | served |
+      | 20    | 10    | 10     | 10     |
+      | 50    | 10    | 40     | 10     |
+      | 20    | 20    | 0      | 20     |
+      | 3     | 2     | 1      | 2      |
+      | 3     | 5     | 0      | 3      |
+```
+
+Did you noticed that? We are testing a new edge case where more shakes than remaining doses are performed! Think about the last example ;)
+
+Upon the Scenario definition shown above, a total of 5 tests will be executed, performing all the described checks.
+
+Similarly to the template arguments seen in previous sections, Scenario templates require parsing the input values into proper types. Unfortunately, this case is not as simple
+as reusing the parsers object seen previously. Instead, converters shall be defined within the test module for a given scenario (or for all of them).
+
+```python
+CONVERTERS = dict(doses=int, serve=int, remain=int, served=int)
+
+scenarios('../features/serving.feature', example_converters=CONVERTERS)
+```
+
+The final code for our feature testing will be as follows:
+
+```python
+import pytest
+from pytest_bdd import parsers, scenarios, given, when, then
+
+from salty import Shaker
+
+CONVERTERS = dict(doses=int, shakes=int, expected_remaining=int, expected_served=int)
+
+scenarios('../features/serving.feature', example_converters=CONVERTERS)
+
+
+@given("A Salt Shaker with <doses> doses")
+@given(parsers.cfparse("A Salt Shaker with {doses:d} doses"))
+def salt_shaker(doses):
+    yield Shaker(doses)
+
+
+@pytest.fixture
+@when(parsers.parse("I shake the shaker {shakes:d} times"))
+@when("I shake the shaker <shakes> times")
+def served(salt_shaker, shakes):
+    doses = 0
+    for i in range(0, shakes):
+        doses += salt_shaker.shake()
+    yield doses
+
+
+@then(parsers.cfparse("{expected_served:d} salt doses falls on my plate"))
+@then("<expected_served> salt doses fall on my plate")
+def served_doses(served, expected_served):
+    assert served == expected_served
+
+
+@then(parsers.parse("The shaker contains {expected_remaining:d} doses"))
+@then("The shaker contains <expected_remaining> doses")
+def check_remaining(salt_shaker, expected_remaining):
+    assert salt_shaker.remaining == expected_remaining
+```
+
+Notice that Step definition decorators had to be written twice. This is due to the regular and template Scenarios that share the same syntax. But in the real world, this is not a common thing.
+
+When executing the tests suite the following output shall be shown:
+
+```shell script
+===================== test session starts =====================
+platform linux -- Python 3.6.9, pytest-5.3.5, py-1.8.1, pluggy-0.13.1
+rootdir: /home/japizarro/Personal/Talks/bdd-salt-shacker-definitive
+plugins: bdd-3.2.1
+collected 7 items                                                                                                                                                                                                                                                    
+
+step_3/tests/test_serving.py .......                    [100%]
+
+===================== 7 passed in 0.04s ======================
+```
+
+As mentioned above, we defined 3 Scenarios, but a total of 7 test items have been executed. This is due to the Scenario outline conversion to five tests items, one per entry in the Examples table. 
 
 [behave-lib]: https://behave.readthedocs.io/en/latest/
 [pypi-parse]: https://pypi.org/project/parse/
