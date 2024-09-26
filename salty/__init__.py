@@ -1,4 +1,4 @@
-class Shaker():
+class Shaker:
     """
     An infamous salt shaker
     """
