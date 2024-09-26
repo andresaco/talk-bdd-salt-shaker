@@ -6,15 +6,15 @@ Feature: Serving
   Scenario: Single Service
     Given A Salt Shaker with 100 doses
     When I shake the shaker 1 times
-    Then 1 salt doses falls on my plate
+    Then 1 salt doses fall on my plate
 
   Scenario: Empty shaker
     Given A Salt Shaker with 0 doses
     When I shake the shaker 1 times
-    Then 0 salt doses falls on my plate
+    Then 0 salt doses fall on my plate
     And The shaker contains 0 doses
 
-  Scenario: Serve multiple times
+  Scenario Outline: Serve multiple times
     Given A Salt Shaker with <doses> doses
     When I shake the shaker <shakes> times
     Then <expected_served> salt doses fall on my plate

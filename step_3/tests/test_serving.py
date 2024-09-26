@@ -3,34 +3,47 @@ from pytest_bdd import parsers, scenarios, given, when, then
 
 from salty import Shaker
 
-CONVERTERS = dict(doses=int, shakes=int, expected_remaining=int, expected_served=int)
-
-scenarios('../features/serving.feature', example_converters=CONVERTERS)
+scenarios("../features/serving.feature")
 
 
-@given("A Salt Shaker with <doses> doses")
-@given(parsers.cfparse("A Salt Shaker with {doses:d} doses"))
+@pytest.fixture
+def shaker():
+    return Shaker()
+
+
+@given(
+    parsers.parse("A Salt Shaker with {doses} doses"),
+    converters=dict(doses=int),
+    target_fixture="shaker",
+)
 def salt_shaker(doses):
     yield Shaker(doses)
 
 
 @pytest.fixture
-@when(parsers.parse("I shake the shaker {shakes:d} times"))
-@when("I shake the shaker <shakes> times")
-def served(salt_shaker, shakes):
+@when(
+    parsers.parse("I shake the shaker {shakes} times"),
+    converters=dict(shakes=int),
+    target_fixture="shakes",
+)
+def served(shaker, shakes):
     doses = 0
     for i in range(0, shakes):
-        doses += salt_shaker.shake()
+        doses += shaker.shake()
     yield doses
 
 
-@then(parsers.cfparse("{expected_served:d} salt doses falls on my plate"))
-@then("<expected_served> salt doses fall on my plate")
-def served_doses(served, expected_served):
-    assert served == expected_served
+@then(
+    parsers.parse("{expected_served} salt doses fall on my plate"),
+    converters=dict(expected_served=int),
+)
+def served_doses(shakes, expected_served):
+    assert shakes == expected_served
 
 
-@then(parsers.parse("The shaker contains {expected_remaining:d} doses"))
-@then("The shaker contains <expected_remaining> doses")
-def check_remaining(salt_shaker, expected_remaining):
-    assert salt_shaker.remaining == expected_remaining
+@then(
+    parsers.parse("The shaker contains {expected_remaining} doses"),
+    converters=dict(expected_remaining=int),
+)
+def check_remaining(shaker, expected_remaining):
+    assert shaker.remaining == expected_remaining
