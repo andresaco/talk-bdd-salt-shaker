@@ -1,27 +1,25 @@
-import pytest
 from pytest_bdd import parsers, scenarios, given, when, then
 
 from salty import Shaker
 
-scenarios('../features/serving.feature')
+scenarios("../features/serving.feature")
 
 
-@given(parsers.cfparse("A Salt Shaker with {doses:d} doses"))
+@given(parsers.parse("A Salt Shaker with {doses:d} doses"), target_fixture="shaker")
 def salt_shaker(doses):
     yield Shaker(doses)
 
 
-@pytest.fixture
-@when("I shake it once")
-def served(salt_shaker):
-    yield salt_shaker.shake()
+@when("I shake it once", target_fixture="served")
+def served(shaker):
+    yield shaker.shake()
 
 
-@then(parsers.cfparse("{expected_served:d} salt dose falls on my plate"))
+@then(parsers.parse("{expected_served:d} salt dose falls on my plate"))
 def served_doses(served, expected_served):
     assert served == expected_served
 
 
 @then("It's empty!")
-def its_empty(salt_shaker):
-    assert salt_shaker.remaining == 0
+def its_empty(shaker):
+    assert shaker.remaining == 0
